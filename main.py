@@ -9,7 +9,7 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from better_profanity import profanity
-import random
+from transformers import BertTokenizer
 
 # Load the ONNX model and tokenizer
 model_path = "model.onnx"
@@ -73,23 +73,6 @@ def check_api_key(api_key):
     response = supabase.table("user_data").select("*").eq("public_key",api_key).execute()
 
     return response.data
-
-def texts_to_sequences_with_random(tokenizer, texts):
-    # Get the size of the vocabulary
-    vocab_size = len(tokenizer.word_index) + 1  # Include 1 to account for padding
-
-    sequences = []
-    for text in texts:
-        sequence = []
-        for word in text.split():
-            word_id = tokenizer.word_index.get(word)
-            if word_id:  # If the word exists in the tokenizer
-                sequence.append(word_id)
-            else:  # Assign a random token ID for unknown words
-                random_id = random.randint(1, vocab_size - 1)  # Exclude padding (ID=0)
-                sequence.append(random_id)
-        sequences.append(sequence)
-    return sequences
 
 @app.route("/auth/signup", methods=["POST"])
 def signup():
@@ -185,8 +168,8 @@ def predict_sentiment():
         if "text" not in data:
             return jsonify({"status": "Failed","error": "Input text is required"}), 400
         # Tokenize the input text
-        inputs = texts_to_sequences_with_random(tokenizer, data["text"])
-        
+        inputs = tokenizer.texts_to_sequences([data["text"]])
+
         # Prepare inputs for ONNX Runtime
         input_name = session.get_inputs()[0].name
         outputs = session.run(None, {input_name: inputs})
