@@ -1,0 +1,7 @@
+# Ignore Emacs swap files
+*~ 
+*.swp
+
+# Ignore environment files
+.env
+
