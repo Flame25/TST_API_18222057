@@ -9,7 +9,6 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from better_profanity import profanity
-from transformers import BertTokenizer
 
 # Load the ONNX model and tokenizer
 model_path = "model.onnx"
