@@ -9,18 +9,18 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from better_profanity import profanity
+import random
 
 # Load the ONNX model and tokenizer
 model_path = "model.onnx"
 
-# Load tokenizer
-with open("tokenizer.pickle", "rb") as handle:
+with open("tokenizer.pickle", "rb") as handle: 
     tokenizer = pickle.load(handle)
 
 try:
     # Initialize ONNX Runtime and tokenizer
     session = onnxruntime.InferenceSession(model_path)
-    label_mapping = {0: 'negative', 1: 'neutral', 2: 'positive'}
+    label_mapping = {0: 'Hate Speech', 1: 'Offensive Language', 2: 'Neither'}
 except Exception as e:
     raise RuntimeError(f"Error initializing model or tokenizer: {str(e)}")
 
@@ -73,6 +73,23 @@ def check_api_key(api_key):
     response = supabase.table("user_data").select("*").eq("public_key",api_key).execute()
 
     return response.data
+
+def texts_to_sequences_with_random(tokenizer, texts):
+    # Get the size of the vocabulary
+    vocab_size = len(tokenizer.word_index) + 1  # Include 1 to account for padding
+
+    sequences = []
+    for text in texts:
+        sequence = []
+        for word in text.split():
+            word_id = tokenizer.word_index.get(word)
+            if word_id:  # If the word exists in the tokenizer
+                sequence.append(word_id)
+            else:  # Assign a random token ID for unknown words
+                random_id = random.randint(1, vocab_size - 1)  # Exclude padding (ID=0)
+                sequence.append(random_id)
+        sequences.append(sequence)
+    return sequences
 
 @app.route("/auth/signup", methods=["POST"])
 def signup():
@@ -168,17 +185,11 @@ def predict_sentiment():
         if "text" not in data:
             return jsonify({"status": "Failed","error": "Input text is required"}), 400
         # Tokenize the input text
-        inputs = tokenizer(data["text"], return_tensors="np", padding=True, truncation=True)
-        inputs = tokenizer(
-            data["text"],
-            return_tensors="np",
-            padding=True,          # Add padding to the maximum sequence in the batch
-            truncation=True,       # Truncate if the text exceeds the model's max sequence length
-            max_length=512)
-
+        inputs = texts_to_sequences_with_random(tokenizer, data["text"])
+        
         # Prepare inputs for ONNX Runtime
         input_name = session.get_inputs()[0].name
-        outputs = session.run(None, {input_name: inputs['input_ids']})
+        outputs = session.run(None, {input_name: inputs})
 
         # Extract predictions
         logits = outputs[0]
@@ -197,7 +208,6 @@ def filter_text():
         if not token:
             return jsonify({"status": "Auth Failed","error": "Authorization header missing or invalid"}), 401
 
-
         decoded_token = verify_jwt(token)
         if not decoded_token:
             return jsonify({"status": "Auth Failed","error": "Invalid or expired token"}), 401
@@ -211,7 +221,7 @@ def filter_text():
 
         # Program Logic
 
-        return profanity.censor(data["text"])
+        return jsonify({"text": data["text"],"response":profanity.censor(data["text"])})
     except Exception as e:
         return jsonify({"status": "Failed", "error": f"{str(e)}"}),500
 
