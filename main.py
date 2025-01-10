@@ -9,32 +9,14 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from better_profanity import profanity
+import tensorflow as tf
+from keras.preprocessing.sequence import pad_sequences
 
-# Load the ONNX model and tokenizer
-model_path = "model.onnx"
+model = tf.keras.models.load_model("m6.keras")
 
 with open("tokenizer.pickle", "rb") as handle: 
     tokenizer = pickle.load(handle)
-
-try:
-    # Initialize ONNX Runtime and tokenizer
-    session = onnxruntime.InferenceSession(model_path)
-    label_mapping = {0: 'Hate Speech', 1: 'Offensive Language', 2: 'Neither'}
-except Exception as e:
-    raise RuntimeError(f"Error initializing model or tokenizer: {str(e)}")
-
-model = onnx.load("model.onnx")
-# Get the model's graph
-graph = model.graph
-
-# Print the input details
-for input_tensor in graph.input:
-    print(f"Name: {input_tensor.name}")
-    print(f"Type: {input_tensor.type.tensor_type.elem_type}")
-    dims = input_tensor.type.tensor_type.shape.dim
-    shape = [dim.dim_value if dim.dim_value > 0 else "dynamic" for dim in dims]
-    print(f"Shape: {shape}")
-
+label_mapping = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -166,20 +148,32 @@ def predict_sentiment():
 
         if "text" not in data:
             return jsonify({"status": "Failed","error": "Input text is required"}), 400
-        # Tokenize the input text
-        inputs = tokenizer.texts_to_sequences([data["text"]])
 
-        # Prepare inputs for ONNX Runtime
-        input_name = session.get_inputs()[0].name
-        outputs = session.run(None, {input_name: inputs})
+        
+        print(data["text"])
+        # Convert text to sequences
+        text_seqs = tokenizer.texts_to_sequences([data["text"]])
 
-        # Extract predictions
-        logits = outputs[0]
-        prediction = logits.argmax(axis=-1)[0]
-        sentiment = label_mapping[prediction]
+        padded = pad_sequences(text_seqs, maxlen=150)
+        
+        # Predict using the model
+        prediction = model.predict(padded)
+
+        classes = []
+
+        print(prediction)
+
+        for i in range(0, len(prediction[0])): 
+            if(prediction[0][i] > 0.7): 
+                classes.append(label_mapping[i])
+
+        if classes == []:
+            res = "Neutral"
+        else: 
+            res = ", ".join(classes)
 
         # Return result
-        return jsonify({"text": data["text"], "sentiment": sentiment})
+        return jsonify({"text": data["text"], "class": res})
     except Exception as e:
         return jsonify({"status": "Failed", "error": f"Inference error: {str(e)}"}), 500
 
