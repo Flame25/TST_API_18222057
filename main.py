@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from better_profanity import profanity
 import tensorflow as tf
 from keras.preprocessing.sequence import pad_sequences
+import requests
 
 model = tf.keras.models.load_model("m6.keras")
 
@@ -204,18 +205,40 @@ def filter_text():
 @app.route("/api/bot", methods=["POST"])
 def filter_and_check():
     try:
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
+        token = request.headers.get("Authorization")
+        if not token:
             return jsonify({"status": "Auth Failed","error": "Authorization header missing or invalid"}), 401
-
-        token = auth_header.split(" ")[1]
         decoded_token = verify_jwt(token)
         if not decoded_token:
             return jsonify({"status":"Auth Failed","error": "Invalid or expired token"}), 401
         if(not check_api_key(decoded_token["sub"])):
             return jsonify({"status":"Invalid Key", "error": "API Key is invalid"}),402
+        data = request.get_json()
+        if "text" not in data:
+            return jsonify({"status": "Failed", "error": "Input Text is required"}), 400
 
-        # TODO:Make a checker if the key is premium only
+        # Define the API endpoint
+        url = "https://tofood.codebloop.my.id/api/services/prompt"
+
+        # Define the headers
+        headers = {
+            "X-API-Key": "0e5bda439fea942a636a41ac97177b27",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "instruction": "Can you help me give the output by filtering the bad words from this sentence and just output or return the filtered sentence only",
+            "input": data["text"]
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            print("Request successful!")
+            answer = response.json()
+            return jsonify({"status": "Success", "response": answer["recipe_result"]})
+        else:
+            return jsonify({"status" : "Failed", "error": f"returned {response.status_code}"})
+
+        # TODO:Make a checker if the key is premium only (Nvm no time :() 
     except Exception as e:
         return jsonify({"status" : "Failed", "error": f"{str(e)}"}),500
 
